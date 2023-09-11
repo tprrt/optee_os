@@ -50,7 +50,12 @@
 #define TCB_WPMR		0xe4
 #define  TCB_WPMR_WAKEY		0x54494d
 
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+static const char * const tcb_clocks[] = {"t0_clk", "t1_clk", "t2_clk",
+					  "td_slck"};
+#else
 static const char * const tcb_clocks[] = { "t0_clk", "gclk", "slow_clk" };
+#endif
 static vaddr_t tcb_base;
 static uint32_t tcb_rate;
 
@@ -168,7 +173,11 @@ static TEE_Result atmel_tcb_probe(const void *fdt, int node,
 	if (fdt_get_status(fdt, node) != DT_STATUS_OK_SEC)
 		return TEE_SUCCESS;
 
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+	res = clk_dt_get_by_name(fdt, node, "td_slck", &clk);
+#else
 	res = clk_dt_get_by_name(fdt, node, "slow_clk", &clk);
+#endif
 	if (res)
 		return res;
 
