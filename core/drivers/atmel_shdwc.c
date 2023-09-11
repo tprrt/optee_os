@@ -34,6 +34,19 @@
 #define SLOW_CLK_FREQ		32768ULL
 #define DBC_PERIOD_US(x)	DIV_ROUND_UP((1000000ULL * (x)), SLOW_CLK_FREQ)
 
+struct ddrc_reg_config {
+	uint32_t type_offset;
+	uint32_t type_mask;
+};
+
+/*
+ * @shdwc_as    Peripheral SHDWC Always Secure ()
+ */
+struct shdwc_compat {
+	uint8_t shdwc_as;
+	struct ddrc_reg_config ddrc;
+};
+
 static vaddr_t shdwc_base;
 static vaddr_t mpddrc_base;
 
@@ -141,11 +154,12 @@ static void at91_shdwc_dt_configure(const void *fdt, int np)
 }
 
 static TEE_Result atmel_shdwc_probe(const void *fdt, int node,
-				    const void *compat_data __unused)
+				    const void *compat_data)
 {
 	int ddr_node = 0;
 	size_t size = 0;
 	uint32_t ddr = AT91_DDRSDRC_MD_LPDDR2;
+	struct shdwc_compat *compat = (struct shdwc_compat *)compat_data;
 
 	/*
 	 * Assembly code relies on the fact that there is only one CPU to avoid
@@ -156,10 +170,14 @@ static TEE_Result atmel_shdwc_probe(const void *fdt, int node,
 	if (fdt_get_status(fdt, node) != DT_STATUS_OK_SEC)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	matrix_configure_periph_secure(AT91C_ID_SYS);
+	if (compat->shdwc_as == 0)
+		matrix_configure_periph_secure(AT91C_ID_SYS);
 
 	if (dt_map_dev(fdt, node, &shdwc_base, &size, DT_MAP_AUTO) < 0)
 		return TEE_ERROR_GENERIC;
+
+	if (!compat->ddrc.type_mask)
+		return TEE_SUCCESS;
 
 	ddr_node = fdt_node_offset_by_compatible(fdt, -1,
 						 "atmel,sama5d3-ddramc");
@@ -178,8 +196,27 @@ static TEE_Result atmel_shdwc_probe(const void *fdt, int node,
 	return sama5d2_pm_init(fdt, shdwc_base);
 }
 
+static const struct shdwc_compat sama5d2_compat = {
+	.shdwc_as = 0,
+	.ddrc = {
+		.type_offset = AT91_DDRSDRC_MDR,
+		.type_mask = AT91_DDRSDRC_MD,
+	}
+};
+
+static const struct shdwc_compat sama7g54_compat = {
+	.shdwc_as = 1,
+};
+
 static const struct dt_device_match atmel_shdwc_match_table[] = {
-	{ .compatible = "atmel,sama5d2-shdwc" },
+	{
+		.compatible = "atmel,sama5d2-shdwc",
+		.compat_data = &sama5d2_compat
+	},
+	{
+		.compatible = "microchip,sama7g5-shdwc",
+		.compat_data = &sama7g54_compat,
+	},
 	{ }
 };
 
