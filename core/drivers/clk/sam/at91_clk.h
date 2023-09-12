@@ -72,6 +72,9 @@ struct clk_pll_layout {
 	uint8_t frac_shift;
 	uint8_t div_shift;
 	uint8_t endiv_shift;
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+	uint8_t div2;
+#endif
 };
 
 struct clk_pcr_layout {
@@ -157,6 +160,20 @@ at91_clk_register_pll(struct pmc_data *pmc, const char *name,
 struct clk *
 at91_clk_register_plldiv(struct pmc_data *pmc, const char *name,
 			 struct clk *parent);
+
+struct clk *
+sam9x60_clk_register_frac_pll(struct pmc_data *pmc,
+			      const char *name, struct clk *parent, uint8_t id,
+			      const struct clk_pll_charac *characteristics,
+			      const struct clk_pll_layout *layout,
+			      uint32_t flags);
+struct clk *
+sam9x60_clk_register_div_pll(struct pmc_data *pmc,
+			     const char *name, struct clk *parent, uint8_t id,
+			     const struct clk_pll_charac *characteristics,
+			     const struct clk_pll_layout *layout,
+			     uint32_t flags,
+			     uint32_t safe_div);
 
 /* UTMI */
 struct clk *
