@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * sama7g54_ek.dts - Device Tree file for SAMA7G54-EK board
+ *
+ *  Copyright (c) 2017, Microchip Technology Inc.
+ *                2016 Nicolas Ferre <nicolas.ferre@atmel.com>
+ *                2017 Cristian Birsan <cristian.birsan@microchip.com>
+ *                2017 Claudiu Beznea <claudiu.beznea@microchip.com>
+ */
+/dts-v1/;
+#include "sama7g5.dtsi"
+
+/ {
+	model = "Microchip SAMA7G5-EK";
+	compatible = "microchip,sama7g5ek", "microchip,sama7g5",
+		     "microchip,sama7";
+
+	clocks {
+		slow_xtal {
+			clock-frequency = <32768>;
+		};
+
+		main_xtal {
+			clock-frequency = <24000000>;
+		};
+	};
+};
+
+&macb0 {
+	status = "okay";
+};
+
+&tcb0 {
+	timer0: timer@0 {
+		compatible = "atmel,tcb-timer";
+		reg = <0>;
+	};
+
+	timer1: timer@1 {
+		compatible = "atmel,tcb-timer";
+		reg = <1>;
+	};
+};
+
+&pioA {
+	status = "disabled";
+	secure-status = "okay";
+};

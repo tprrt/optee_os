@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ *  sama7g5.dtsi - Device Tree Include file for SAMA7G5 family SoC
+ *
+ *  Copyright (C) 2020 Microchip Technology, Inc. and its subsidiaries
+ *
+ *  Author: Eugen Hristev <eugen.hristev@microchip.com>
+ *  Author: Claudiu Beznea <claudiu.beznea@microchip.com>
+ *
+ */
+
+#include <dt-bindings/dma/at91.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/clock/at91.h>
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	model = "Microchip SAMA7G5 family SoC";
+	compatible = "microchip,sama7g5";
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a5";
+			reg = <0>;
+			clocks = <&pmc PMC_TYPE_CORE PMC_CPUPLL>;
+			clock-names = "cpu";
+		};
+	};
+
+	clocks {
+		slow_xtal: slow_xtal {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <0>;
+		};
+
+		main_xtal: main_xtal {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <0>;
+		};
+	};
+
+	ns_sram: sram@100000 {
+		compatible = "atmel,sama5d2-sram", "mmio-sram";
+		reg = <0x00100000 0x20000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0x00100000 0x20000>;
+		status = "disabled";
+		secure-status = "okay";
+	};
+
+	ahb {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		apb {
+			compatible = "simple-bus";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			pmc: pmc@e0018000 {
+				compatible = "microchip,sama7g5-pmc", "syscon";
+				reg = <0xe0018000 0x200>;
+				#clock-cells = <2>;
+				clocks = <&clk32k 1>, <&clk32k 0>, <&main_xtal>;
+				clock-names = "td_slck", "md_slck", "main_xtal";
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			macb0: ethernet@e2800000 {
+				compatible = "atmel,sama5d2-gem";
+				reg = <0xe2800000 0x1000>;
+				clocks = <&pmc PMC_TYPE_PERIPHERAL 51>,
+					 <&pmc PMC_TYPE_PERIPHERAL 51>,
+					 <&pmc PMC_TYPE_GCK 51>,
+					 <&pmc PMC_TYPE_GCK 53>;
+				clock-names = "pclk", "hclk", "tx_clk",
+					      "tsu_clk";
+				assigned-clocks = <&pmc PMC_TYPE_GCK 51>;
+				assigned-clock-parents=<&pmc PMC_TYPE_CORE PMC_ETHPLL>;
+				assigned-clock-rates = <125000000>;
+				status = "disabled";
+			};
+
+			tcb0: timer@e2814000 {
+				compatible = "atmel,sama5d2-tcb", "simple-mfd",
+				"syscon";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0xe2814000 0x100>;
+				clocks = <&pmc PMC_TYPE_PERIPHERAL 88>,
+					 <&pmc PMC_TYPE_PERIPHERAL 89>,
+					 <&pmc PMC_TYPE_PERIPHERAL 90>,
+					 <&clk32k 1>;
+				clock-names = "t0_clk", "t1_clk", "t2_clk",
+					      "td_slck";
+			};
+
+			tcb1: timer@e0800000 {
+				compatible = "atmel,sama5d2-tcb", "simple-mfd",
+					     "syscon";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0xe0800000 0x100>;
+				clocks = <&pmc PMC_TYPE_PERIPHERAL 91>,
+					 <&pmc PMC_TYPE_PERIPHERAL 92>,
+					 <&pmc PMC_TYPE_PERIPHERAL 93>,
+					 <&clk32k 1>;
+				clock-names = "t0_clk", "t1_clk", "t2_clk",
+					      "td_slck";
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			reset_controller: rstc@e001d000 {
+				compatible = "microchip,sama7g5-rstc";
+				reg = <0xe001d000 0xc>, <0xe001d0e4 0x4>;
+				#reset-cells = <1>;
+				clocks = <&clk32k 0>;
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			shdwc: shdwc@e001d010 {
+				compatible = "microchip,sama7g5-shdwc",
+					     "syscon";
+				reg = <0xe001d010 0x10>;
+				clocks = <&clk32k 0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				atmel,wakeup-rtc-timer;
+				atmel,wakeup-rtt-timer;
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			clk32k: sckc@e001d050 {
+				compatible = "microchip,sama7g5-sckc";
+				reg = <0xe001d050 0x4>;
+				clocks = <&slow_xtal>;
+				#clock-cells = <1>;
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			rtc: rtc@e001d0a8 {
+				compatible = "microchip,sama7g5-rtc";
+				reg = <0xe001d0a8 0x30>;
+				clocks = <&clk32k 1>;
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			trng: rng@e2010000 {
+				compatible = "microchip,sama7g5-trng",
+					     "atmel,at91sam9g45-trng";
+				reg = <0xe2010000 0x100>;
+				clocks = <&pmc PMC_TYPE_PERIPHERAL 97>;
+				status = "disabled";
+				secure-status = "okay";
+			};
+
+			pioA: pinctrl@e0014000 {
+				compatible = "microchip,sama7g5-pinctrl";
+				reg = <0xe0014000 0x800>;
+				interrupt-controller;
+				#interrupt-cells = <2>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				clocks = <&pmc PMC_TYPE_PERIPHERAL 11>;
+			};
+
+			pioBU: secumod@e0004000 {
+				compatible = "microchip,sama7g5-secumod",
+					     "syscon";
+				reg = <0xe0004000 0x100>;
+
+				gpio-controller;
+				#gpio-cells = <2>;
+				status = "disabled";
+				secure-status = "okay";
+			};
+		};
+	};
+};
