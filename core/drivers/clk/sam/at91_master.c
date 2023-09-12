@@ -24,6 +24,10 @@ struct clk_master {
 	uint32_t mckr;
 	int chg_pid;
 	uint8_t div;
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+	uint8_t id;
+	uint8_t parent;
+#endif
 };
 
 static bool clk_master_ready(struct clk_master *master)
@@ -179,3 +183,115 @@ const struct clk_master_layout at91sam9x5_master_layout = {
 	.pres_shift = 4,
 	.offset = AT91_PMC_MCKR,
 };
+
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+#define PMC_MCR_CSS_SHIFT	(16)
+#define MASTER_MAX_ID		4
+
+static size_t clk_sama7g5_master_get_parent(struct clk *hw)
+{
+	struct clk_master *master = hw->priv;
+	size_t i;
+
+	for (i = 0; i < hw->num_parents; i++)
+		if (master->mux_table[i] == master->parent)
+			return i;
+
+	EMSG("Can't get correct parent of clock \"%s\"", hw->name);
+	return -1;
+}
+
+static TEE_Result clk_sama7g5_master_set_parent(struct clk *hw, size_t index)
+{
+	struct clk_master *master = hw->priv;
+
+	if (index >= hw->num_parents)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	master->parent = master->mux_table[index];
+	return TEE_SUCCESS;
+}
+
+static TEE_Result clk_sama7g5_master_set_rate(struct clk *hw,
+					      unsigned long rate,
+					      unsigned long parent_rate)
+{
+	struct clk_master *master = hw->priv;
+	unsigned long div;
+
+	div = UDIV_ROUND_NEAREST(parent_rate, rate);
+	if ((div > (1 << (MASTER_PRES_MAX - 1))) || (div & (div - 1)))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (div == 3)
+		div = MASTER_PRES_MAX;
+	else if (div)
+		div = ffs(div) - 1;
+	master->div = div;
+	return TEE_SUCCESS;
+}
+
+static unsigned long clk_sama7g5_master_get_rate(struct clk *hw,
+						 unsigned long parent_rate)
+{
+	struct clk_master *master = hw->priv;
+	unsigned long rate = parent_rate >> master->div;
+
+	if (master->div == 7)
+		rate = parent_rate / 3;
+
+	return rate;
+}
+
+static const struct clk_ops sama7g5_master_ops = {
+	.set_rate = clk_sama7g5_master_set_rate,
+	.get_rate = clk_sama7g5_master_get_rate,
+	.get_parent = clk_sama7g5_master_get_parent,
+	.set_parent = clk_sama7g5_master_set_parent,
+};
+
+struct clk *
+at91_clk_sama7g5_register_master(struct pmc_data *pmc,
+				 const char *name, int num_parents,
+				 struct clk **parent,
+				 uint32_t *mux_table,
+				 uint8_t id,
+				 int chg_pid)
+{
+	struct clk_master *master;
+	struct clk *hw;
+	unsigned int val;
+
+	if (!name || !num_parents || !parent || !mux_table ||
+	    id > MASTER_MAX_ID)
+		return NULL;
+
+	master = calloc(1, sizeof(*master));
+	if (!master)
+		return NULL;
+
+	hw = clk_alloc(name, &sama7g5_master_ops, parent, num_parents);
+	if (!hw) {
+		free(master);
+		return NULL;
+	}
+
+	hw->priv = master;
+	master->base = pmc->base;
+	master->id = id;
+	master->chg_pid = chg_pid;
+	master->mux_table = mux_table;
+
+	io_write32(master->base + AT91_PMC_MCR_V2, master->id);
+	val = io_read32(master->base + AT91_PMC_MCR_V2);
+	master->parent = (val & AT91_PMC_MCR_V2_CSS) >> PMC_MCR_CSS_SHIFT;
+	master->div = (val & AT91_PMC_MCR_V2_DIV) >> MASTER_DIV_SHIFT;
+
+	if (clk_register(hw)) {
+		clk_free(hw);
+		free(master);
+		return NULL;
+	}
+	return hw;
+}
+#endif /* CFG_DRIVERS_SAMA7G5_CLK */
