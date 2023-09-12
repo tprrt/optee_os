@@ -56,4 +56,8 @@ static TEE_Result sckc_pmc_setup(const void *fdt __unused, int offs,
 	return TEE_SUCCESS;
 }
 
+#ifdef PLATFORM_FLAVOR_sama7g54_ek
+CLK_DT_DECLARE(at91_sckc, "microchip,sama7g5-sckc", sckc_pmc_setup);
+#else
 CLK_DT_DECLARE(at91_sckc, "atmel,sama5d4-sckc", sckc_pmc_setup);
+#endif
