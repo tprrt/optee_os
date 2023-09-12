@@ -219,6 +219,9 @@ struct clk *
 at91_clk_register_generated(struct pmc_data *pmc,
 			    const struct clk_pcr_layout *layout,
 			    const char *name, struct clk **parents,
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+			    uint32_t *mux_table,
+#endif
 			    uint8_t num_parents, uint8_t id,
 			    const struct clk_range *range,
 			    int chg_pid);
