@@ -35,10 +35,12 @@ struct clk *pmc_clk_get_by_name(struct pmc_clk *clks, unsigned int nclk,
 {
 	unsigned int i = 0;
 
-	for (i = 0; i < nclk; i++)
+	for (i = 0; i < nclk; i++) {
+		if (!clks[i].clk)
+			continue;
 		if (strcmp(clks[i].clk->name, name) == 0)
 			return clks[i].clk;
-
+	}
 	return NULL;
 }
 
