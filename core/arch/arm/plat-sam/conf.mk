@@ -4,6 +4,7 @@ flavor_dts_file-sama5d2xult = at91-sama5d2_xplained.dts
 flavor_dts_file-sama5d2_xplained = at91-sama5d2_xplained.dts
 flavor_dts_file-sama5d27_som1_ek = at91-sama5d27_som1_ek.dts
 flavor_dts_file-sama5d27_wlsom1_ek = at91-sama5d27_wlsom1_ek.dts
+flavor_dts_file-sama7g54_ek = at91-sama7g54_ek.dts
 
 ifeq ($(PLATFORM_FLAVOR),sama5d2xult)
 $(warning "sama5d2xult is deprecated, please use sama5d2_xplained")
@@ -14,21 +15,39 @@ $(error Invalid platform flavor $(PLATFORM_FLAVOR))
 endif
 CFG_EMBED_DTB_SOURCE_FILE ?= $(flavor_dts_file-$(PLATFORM_FLAVOR))
 
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+include core/arch/arm/cpu/cortex-a7.mk
+$(call force,CFG_SAMA7G5,y)
+else
 include core/arch/arm/cpu/cortex-a5.mk
+$(call force,CFG_SAMA5D2,y)
+endif
 
 $(call force,CFG_TEE_CORE_NB_CORE,1)
 $(call force,CFG_ATMEL_UART,y)
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+$(call force,CFG_GIC,y)
+else
 $(call force,CFG_ATMEL_SAIC,y)
+endif
 $(call force,CFG_ATMEL_TCB,y)
 $(call force,CFG_NO_SMP,y)
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+$(call force,CFG_TZC400,y)
+else
 $(call force,CFG_PL310,y)
 $(call force,CFG_PL310_LOCKED,y)
+endif
 $(call force,CFG_AT91_MATRIX,y)
 $(call force,CFG_DRIVERS_CLK,y)
 $(call force,CFG_DRIVERS_CLK_DT,y)
 $(call force,CFG_DRIVERS_CLK_FIXED,y)
 $(call force,CFG_DRIVERS_SAM_CLK,y)
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+$(call force,CFG_DRIVERS_SAMA7G5_CLK,y)
+else
 $(call force,CFG_DRIVERS_SAMA5D2_CLK,y)
+endif
 $(call force,CFG_PSCI_ARM32,y)
 $(call force,CFG_SM_PLATFORM_HANDLER,y)
 $(call force,CFG_CORE_HAS_GENERIC_TIMER,n)
@@ -36,11 +55,22 @@ $(call force,CFG_CORE_HAS_GENERIC_TIMER,n)
 # These values are forced because of matrix configuration for secure area.
 # When modifying these, always update matrix settings in
 # matrix_configure_slave_h64mx().
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+$(call force,CFG_TZDRAM_START,0x60000000)
+else
 $(call force,CFG_TZDRAM_START,0x20000000)
+endif
 $(call force,CFG_TZDRAM_SIZE,0x800000)
 
 CFG_MMAP_REGIONS ?= 24
 
+ifeq ($(PLATFORM_FLAVOR),sama7g54_ek)
+CFG_SHMEM_START  = 0x61000000
+CFG_SCMI_SHMEM_START  = 0x61400000
+CFG_DT_ADDR = 0x61500000
+CFG_DRIVERS_PINCTRL ?= y
+CFG_ATMEL_PIO ?= y
+endif
 CFG_SHMEM_START  ?= 0x21000000
 CFG_SHMEM_SIZE   ?= 0x400000
 
