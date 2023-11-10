@@ -22,7 +22,11 @@ static TEE_Result get_freq_from_dt(void)
 	if (!fdt)
 		panic();
 
+#ifdef CFG_DRIVERS_SAMA7G5_CLK
+	node = fdt_node_offset_by_compatible(fdt, -1, "arm,cortex-a7");
+#else
 	node = fdt_node_offset_by_compatible(fdt, -1, "arm,cortex-a5");
+#endif
 	if (!node)
 		panic();
 
