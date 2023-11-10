@@ -172,6 +172,31 @@ static const struct sama5d2_pmc_clk pmc_clks[] = {
 		.pmc_id = 15
 	},
 	{
+		.scmi_id = AT91_SCMI_CLK_PERIPH_ASRC_CLK,
+		.pmc_type = PMC_TYPE_PERIPHERAL,
+		.pmc_id = ID_ASRC
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_GCK_ASRC_GCLK,
+		.pmc_type = PMC_TYPE_GCK,
+		.pmc_id = ID_ASRC
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_PERIPH_CSI_CLK,
+		.pmc_type = PMC_TYPE_PERIPHERAL,
+		.pmc_id = ID_CSI
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_GCK_CSI_GCLK,
+		.pmc_type = PMC_TYPE_GCK,
+		.pmc_id = ID_CSI
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_PERIPH_CSI2DC_CLK,
+		.pmc_type = PMC_TYPE_PERIPHERAL,
+		.pmc_id = ID_CSI2DC
+	},
+	{
 		.scmi_id = AT91_SCMI_CLK_PERIPH_MACB0_CLK,
 		.pmc_type = PMC_TYPE_PERIPHERAL,
 		.pmc_id = ID_GMAC0
@@ -185,6 +210,21 @@ static const struct sama5d2_pmc_clk pmc_clks[] = {
 		.scmi_id = AT91_SCMI_CLK_GCK_MACB0_TSU,
 		.pmc_type = PMC_TYPE_GCK,
 		.pmc_id = ID_GMAC0_TSU
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_PERIPH_MACB1_CLK,
+		.pmc_type = PMC_TYPE_PERIPHERAL,
+		.pmc_id = ID_GMAC1
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_GCK_MACB1_GCLK,
+		.pmc_type = PMC_TYPE_GCK,
+		.pmc_id = ID_GMAC1
+	},
+	{
+		.scmi_id = AT91_SCMI_CLK_GCK_MACB1_TSU,
+		.pmc_type = PMC_TYPE_GCK,
+		.pmc_id = ID_GMAC1_TSU
 	},
 	{
 		.scmi_id = AT91_SCMI_CLK_PERIPH_TDES_CLK,
