@@ -19,18 +19,19 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	uint8_t *huk = NULL;
-	size_t len = 0;
+
+	if (huk_cell->len < HW_UNIQUE_KEY_LENGTH) {
+		res = TEE_ERROR_GENERIC;
+		goto out_free_cell;
+	}
 
 	res = nvmem_cell_malloc_and_read(huk_cell, &huk);
 	if (res)
 		goto out_free_cell;
 
-	if (len != HW_UNIQUE_KEY_LENGTH) {
-		res = TEE_ERROR_GENERIC;
-		goto out_free_cell;
-	}
-
 	memcpy(hwkey->data, huk, HW_UNIQUE_KEY_LENGTH);
+
+	return res;
 
 out_free_cell:
 	nvmem_put_cell(huk_cell);
