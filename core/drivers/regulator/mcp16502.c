@@ -34,6 +34,18 @@
 #define MCP16502_OPMODE_LPM 0x4
 #define MCP16502_OPMODE_HIB 0x8
 
+enum mcp16502_reg_id
+{
+	BUCK1 = 0,
+	BUCK2,
+	BUCK3,
+	BUCK4,
+	BUCK_COUNT = BUCK4,
+	LDO1,
+	LDO2,
+	MCP16502_REG_COUNT
+};
+
 /**
  * enum mcp16502_reg_type - MCP16502 regulators's registers
  * @MCP16502_REG_A: active state register
@@ -56,6 +68,47 @@ struct mcp16502
 {
 	struct i2c_dev *i2c_dev;
 	struct gpio *lpm_gpio;
+};
+
+struct mcp16502_priv
+{
+	const char *name;
+	enum mcp16502_reg_id id;
+	const struct mcp16502_vset_range *vset_range;
+};
+
+struct mcp16502_vset_range
+{
+	int uv_min;
+	int uv_max;
+	unsigned int uv_step;
+};
+
+#define MCP16502_VSET_RANGE(_name, _min, _step)		\
+const struct mcp16502_vset_range _name ## _range = {	\
+	.uv_min = _min,					\
+	.uv_max = _min + VSET_COUNT * _step,		\
+	.uv_step = _step,				\
+}
+
+MCP16502_VSET_RANGE(buck1_ldo12, 1200000, 50000);
+MCP16502_VSET_RANGE(buck234, 600000, 25000);
+
+#define MCP16502_REGULATOR(_name, _id, _ranges) \
+	{					\
+		.name = _name,			\
+		.id = _id,			\
+		.vset_range = &_ranges,		\
+	}
+
+static struct mcp16502_priv mcp16502_priv[] = {
+	/* MCP16502_REGULATOR(_name, _id, ranges, regulator_ops) */
+	MCP16502_REGULATOR("VDD_IO", BUCK1, buck1_ldo12_range),
+	MCP16502_REGULATOR("VDD_DDR", BUCK2, buck234_range),
+	MCP16502_REGULATOR("VDD_CORE", BUCK3, buck234_range),
+	MCP16502_REGULATOR("VDD_OTHER", BUCK4, buck234_range),
+	MCP16502_REGULATOR("LDO1", LDO1, buck1_ldo12_range),
+	MCP16502_REGULATOR("LDO2", LDO2, buck1_ldo12_range)
 };
 
 static void mcp16502_gpio_set_lpm_mode(struct mcp16502 *mcp, bool lpm)
@@ -114,27 +167,85 @@ static void mcp16502_pm_init(struct mcp16502 *mcp)
 }
 #endif
 
-static TEE_Result mcp16502_set_state(struct regulator *regulator, bool enable) {
+static TEE_Result mcp16502_rmw(struct mcp16502 *mcp, unsigned int reg_off,
+			       uint8_t mask, uint8_t value)
+{
+	TEE_Result res = TEE_ERROR_GENERIC;
+	uint8_t byte;
+
+	res = i2c_smbus_read_byte_data(mcp->i2c_dev, reg_off, &byte);
+	if (res)
+		return res;
+
+	byte &= ~mask;
+	byte |= value;
+
+	return i2c_smbus_write_byte_data(mcp->i2c_dev, reg_off, byte);
+}
+
+static TEE_Result mcp16502_set_state(struct regulator *regulator, bool enable)
+{
+	// TODO
 	return TEE_SUCCESS;
 }
 
 
-static TEE_Result mcp16502_get_state(struct regulator *regulator, bool *enabled) {
+static TEE_Result mcp16502_get_state(struct regulator *regulator, bool *enabled)
+{
+	// TODO
 	return TEE_SUCCESS;
 }
 
-static TEE_Result mcp16502_get_voltage(struct regulator *regulator, int *level_uv) {
-	return TEE_SUCCESS;
+static TEE_Result mcp16502_get_voltage(struct regulator *regulator, int *level_uv)
+{
+	struct mcp16502_priv *priv = regulator->priv;
+	const struct mcp16502_vset_range *vset_r = priv->vset_range;
+	uint8_t vset = 0;
+	uint32_t reg_off = MCP16502_REG_BASE(priv->id, A);
+	TEE_Result res = TEE_ERROR_GENERIC;
+
+	res = i2c_smbus_read_byte_data(mcp->i2c_dev, reg_off, &byte);
+	if (res)
+		return res;
+
+	// TODO
+
+	return res;
 }
 
-static TEE_Result mcp16502_set_voltage(struct regulator *regulator, int level_uv) {
-	return TEE_SUCCESS;
+static TEE_Result mcp16502_set_voltage(struct regulator *regulator, int level_uv)
+{
+	struct mcp16502_priv *priv = regulator->priv;
+	const struct mcp16502_vset_range *vset_r = priv->vset_range;
+	uint8_t vset = 0;
+	uint32_t reg_off = MCP16502_REG_BASE(priv->id, A);
+	TEE_Result res = TEE_ERROR_GENERIC;
+
+	if (level_uv < vset_r->uv_min || level_uv > vset_r->uv_max)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	vset = VDD_LOW_SEL + (level_uv - vset_r->uv_min) / vset_r->uv_step;
+
+	res = mcp16502_rmw(regulator->mcp, reg_off, MCP16502_VSET_MASK, vset);
+
+	return res;
 }
 
 static TEE_Result mcp16502_list_voltages(struct regulator *regulator,
 					 struct regulator_voltages_desc **out_desc,
 					 const int **out_levels)
 {
+	struct mcp16502_priv *priv = regulator->priv;
+	const struct mcp16502_vset_range *vset_r = priv->vset_range;
+	unsigned int i = 0;
+
+	// TODO
+	if (offset > VSET_COUNT)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	for (i = 0; i < *count; i++)
+		voltage[i] = vset_r->uv_min + (offset + i) * vset_r->uv_step;
+
 	return TEE_SUCCESS;
 }
 
@@ -143,12 +254,6 @@ static TEE_Result mcp16502_regu_init(struct regulator *regulator,
 				     const void *fdt __unused, int node __unused) {
 	return TEE_SUCCESS;
 }
-
-#if 0
-static const char * const mcp16502_regu_name_ids[] = {
-	"VDD_IO", "VDD_DDR", "VDD_CORE", "VDD_OTHER", "LDO1", "LDO2"
-};
-#endif
 
 static const struct regulator_ops mcp16502_regu_buck_ops = {
 	.set_state = mcp16502_set_state,
@@ -173,6 +278,7 @@ static TEE_Result mcp16502_register_regulator(const void *fdt, int node)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct regu_dt_desc *desc;
+	int i = 0;
 
 	desc = calloc(1, sizeof(struct regu_dt_desc));
 	if (!desc)
@@ -186,6 +292,13 @@ static TEE_Result mcp16502_register_regulator(const void *fdt, int node)
 		desc->ops = &mcp16502_regu_buck_ops;
 	else
 		desc->ops = &mcp16502_regu_ldo_ops;
+
+	for (i = 0; i < MCP16502_REG_COUNT; i++) {
+		if (strcmp(desc->name, mcp16502_priv[i].name) == 0) {
+			desc->priv = &mcp16502_priv[i];
+			break;
+		}
+	}
 
 	return res;
 }
