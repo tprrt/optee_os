@@ -64,7 +64,7 @@ enum mcp16502_reg_type
 	MCP16502_REG_CFG,
 };
 
-struct mcp16502
+struct mcp16502_pmic
 {
 	struct i2c_dev *i2c_dev;
 	struct gpio *lpm_gpio;
@@ -75,6 +75,7 @@ struct mcp16502_priv
 	const char *name;
 	enum mcp16502_reg_id id;
 	const struct mcp16502_vset_range *vset_range;
+	struct mcp16502_pmic *pmic;
 };
 
 struct mcp16502_vset_range
@@ -99,9 +100,10 @@ MCP16502_VSET_RANGE(buck234, 600000, 25000);
 		.name = _name,			\
 		.id = _id,			\
 		.vset_range = &_ranges,		\
+		.pmic = NULL,			\
 	}
 
-static struct mcp16502_priv mcp16502_priv[] = {
+static struct mcp16502_priv mcp16502_regu[] = {
 	/* MCP16502_REGULATOR(_name, _id, ranges, regulator_ops) */
 	MCP16502_REGULATOR("VDD_IO", BUCK1, buck1_ldo12_range),
 	MCP16502_REGULATOR("VDD_DDR", BUCK2, buck234_range),
@@ -111,9 +113,9 @@ static struct mcp16502_priv mcp16502_priv[] = {
 	MCP16502_REGULATOR("LDO2", LDO2, buck1_ldo12_range)
 };
 
-static void mcp16502_gpio_set_lpm_mode(struct mcp16502 *mcp, bool lpm)
+static void mcp16502_gpio_set_lpm_mode(struct mcp16502_pmic *pmic, bool lpm)
 {
-	gpio_set_value(mcp->lpm_gpio, !lpm);
+	gpio_set_value(pmic->lpm_gpio, !lpm);
 }
 
 /*
@@ -121,16 +123,16 @@ static void mcp16502_gpio_set_lpm_mode(struct mcp16502 *mcp, bool lpm)
  *
  * Used to prepare transitioning into hibernate or resuming from it.
  */
-static void mcp16502_gpio_set_mode(struct mcp16502 *mcp, int mode)
+static void mcp16502_gpio_set_mode(struct mcp16502_pmic *pmic, int mode)
 {
 	switch (mode)
 	{
 	case MCP16502_OPMODE_ACTIVE:
-		mcp16502_gpio_set_lpm_mode(mcp, false);
+		mcp16502_gpio_set_lpm_mode(pmic, false);
 		break;
 	case MCP16502_OPMODE_LPM:
 	case MCP16502_OPMODE_HIB:
-		mcp16502_gpio_set_lpm_mode(mcp, true);
+		mcp16502_gpio_set_lpm_mode(pmic, true);
 		break;
 	default:
 		EMSG("Invalid mode for mcp16502_gpio_set_mode");
@@ -141,14 +143,14 @@ static void mcp16502_gpio_set_mode(struct mcp16502 *mcp, int mode)
 static TEE_Result mcp16502_pm(enum pm_op op, uint32_t pm_hint __unused,
 			       const struct pm_callback_handle *hdl __unused)
 {
-	struct mcp16502 *mcp = hdl->handle;
+	struct mcp16502_pmic *pmic = hdl->handle;
 
 	switch (op) {
 	case PM_OP_RESUME:
-		mcp16502_gpio_set_mode(mcp, MCP16502_OPMODE_ACTIVE);
+		mcp16502_gpio_set_mode(pmic, MCP16502_OPMODE_ACTIVE);
 		break;
 	case PM_OP_SUSPEND:
-		mcp16502_gpio_set_mode(mcp, MCP16502_OPMODE_LPM);
+		mcp16502_gpio_set_mode(pmic, MCP16502_OPMODE_LPM);
 		break;
 	default:
 		break;
@@ -157,58 +159,80 @@ static TEE_Result mcp16502_pm(enum pm_op op, uint32_t pm_hint __unused,
 	return TEE_SUCCESS;
 }
 
-static void mcp16502_pm_init(struct mcp16502 *mcp)
+static void mcp16502_pm_init(struct mcp16502_pmic *pmic)
 {
-	register_pm_driver_cb(mcp16502_pm, mcp, "mcp16502");
+	register_pm_driver_cb(mcp16502_pm, pmic, "mcp16502");
 }
 #else
-static void mcp16502_pm_init(struct mcp16502 *mcp)
+static void mcp16502_pm_init(struct mcp16502_pmic *pmic)
 {
 }
 #endif
 
-static TEE_Result mcp16502_rmw(struct mcp16502 *mcp, unsigned int reg_off,
+static TEE_Result mcp16502_rm(struct mcp16502_pmic *pmic, unsigned int reg_off,
+			      uint8_t mask, uint8_t *value)
+{
+	TEE_Result res = TEE_ERROR_GENERIC;
+	uint8_t byte;
+
+	res = i2c_smbus_read_byte_data(pmic->i2c_dev, reg_off, &byte);
+	if (res)
+		return res;
+
+	byte &= ~mask;
+	*value = byte;
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result mcp16502_rmw(struct mcp16502_pmic *pmic, unsigned int reg_off,
 			       uint8_t mask, uint8_t value)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	uint8_t byte;
 
-	res = i2c_smbus_read_byte_data(mcp->i2c_dev, reg_off, &byte);
+	res = i2c_smbus_read_byte_data(pmic->i2c_dev, reg_off, &byte);
 	if (res)
 		return res;
 
 	byte &= ~mask;
 	byte |= value;
 
-	return i2c_smbus_write_byte_data(mcp->i2c_dev, reg_off, byte);
+	return i2c_smbus_write_byte_data(pmic->i2c_dev, reg_off, byte);
 }
 
 static TEE_Result mcp16502_set_state(struct regulator *regulator, bool enable)
 {
-	// TODO
-	return TEE_SUCCESS;
-}
+	struct mcp16502_priv *priv = regulator->priv;
+	uint32_t reg_off = MCP16502_REG_BASE(priv->id, A);
 
+	if (enable)
+		return mcp16502_rmw(priv->pmic, reg_off, MCP16502_EN, MCP16502_EN);
+	else
+		return mcp16502_rmw(priv->pmic, reg_off, MCP16502_EN, 0);
+}
 
 static TEE_Result mcp16502_get_state(struct regulator *regulator, bool *enabled)
 {
-	// TODO
-	return TEE_SUCCESS;
+	struct mcp16502_priv *priv = regulator->priv;
+	uint32_t reg_off = MCP16502_REG_BASE(priv->id, A);
+
+	return mcp16502_rm(priv->pmic, reg_off, MCP16502_EN, enabled);
 }
 
 static TEE_Result mcp16502_get_voltage(struct regulator *regulator, int *level_uv)
 {
 	struct mcp16502_priv *priv = regulator->priv;
 	const struct mcp16502_vset_range *vset_r = priv->vset_range;
-	uint8_t vset = 0;
+	uint8_t vset;
 	uint32_t reg_off = MCP16502_REG_BASE(priv->id, A);
 	TEE_Result res = TEE_ERROR_GENERIC;
 
-	res = i2c_smbus_read_byte_data(mcp->i2c_dev, reg_off, &byte);
+	res = mcp16502_rm(priv->pmic, reg_off, MCP16502_VSET_MASK, &vset);
 	if (res)
 		return res;
 
-	// TODO
+	*level_uv = (vset - VDD_LOW_SEL) * vset_r->uv_step + vset_r->uv_min;
 
 	return res;
 }
@@ -226,7 +250,7 @@ static TEE_Result mcp16502_set_voltage(struct regulator *regulator, int level_uv
 
 	vset = VDD_LOW_SEL + (level_uv - vset_r->uv_min) / vset_r->uv_step;
 
-	res = mcp16502_rmw(regulator->mcp, reg_off, MCP16502_VSET_MASK, vset);
+	res = mcp16502_rmw(priv->pmic, reg_off, MCP16502_VSET_MASK, vset);
 
 	return res;
 }
@@ -250,8 +274,10 @@ static TEE_Result mcp16502_list_voltages(struct regulator *regulator,
 }
 
 
-static TEE_Result mcp16502_regu_init(struct regulator *regulator,
-				     const void *fdt __unused, int node __unused) {
+static TEE_Result mcp16502_supplied_init(struct regulator *regulator,
+					 const void *fdt __unused,
+					 int node __unused) {
+	// TODO
 	return TEE_SUCCESS;
 }
 
@@ -261,7 +287,7 @@ static const struct regulator_ops mcp16502_regu_buck_ops = {
 	.set_voltage = mcp16502_set_voltage,
 	.get_voltage = mcp16502_get_voltage,
 	.supported_voltages = mcp16502_list_voltages,
-	.supplied_init = mcp16502_regu_init,
+	.supplied_init = mcp16502_supplied_init,
 };
 DECLARE_KEEP_PAGER(mcp16502_regu_buck_ops);
 
@@ -270,11 +296,12 @@ static const struct regulator_ops mcp16502_regu_ldo_ops = {
 	.get_state = mcp16502_get_state,
 	.set_voltage = mcp16502_set_voltage,
 	.get_voltage = mcp16502_get_voltage,
-	.supplied_init = mcp16502_regu_init,
+	.supplied_init = mcp16502_supplied_init,
 };
 DECLARE_KEEP_PAGER(mcp16502_regu_ldo_ops);
 
-static TEE_Result mcp16502_register_regulator(const void *fdt, int node)
+static TEE_Result mcp16502_register_regulator(const void *fdt, int node,
+					      struct mcp16502_pmic *pmic)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct regu_dt_desc *desc;
@@ -294,8 +321,10 @@ static TEE_Result mcp16502_register_regulator(const void *fdt, int node)
 		desc->ops = &mcp16502_regu_ldo_ops;
 
 	for (i = 0; i < MCP16502_REG_COUNT; i++) {
-		if (strcmp(desc->name, mcp16502_priv[i].name) == 0) {
-			desc->priv = &mcp16502_priv[i];
+		if (strcmp(desc->name, mcp16502_regu[i].name) == 0) {
+			struct mcp16502_priv priv = mcp16502_regu[i];
+			priv.pmic = pmic;
+			desc->priv = &priv;
 			break;
 		}
 	}
@@ -303,7 +332,8 @@ static TEE_Result mcp16502_register_regulator(const void *fdt, int node)
 	return res;
 }
 
-static TEE_Result mcp16502_register_regulators(const void *fdt, int node)
+static TEE_Result mcp16502_register_regulators(const void *fdt, int node,
+					       struct mcp16502_pmic *pmic)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int regs_node = 0;
@@ -314,7 +344,7 @@ static TEE_Result mcp16502_register_regulators(const void *fdt, int node)
 		return TEE_ERROR_GENERIC;
 
 	fdt_for_each_subnode(reg, fdt, regs_node) {
-		res = mcp16502_register_regulator(fdt, reg);
+		res = mcp16502_register_regulator(fdt, reg, pmic);
 		if (res)
 			return res;
 	}
@@ -325,27 +355,27 @@ static TEE_Result mcp16502_register_regulators(const void *fdt, int node)
 static TEE_Result mcp16502_probe(struct i2c_dev *i2c_dev, const void *fdt,
 				 int node, const void *compat_data __unused)
 {
-	struct mcp16502 *mcp = NULL;
+	struct mcp16502_pmic *pmic = NULL;
 
-	mcp = calloc(1, sizeof(struct mcp16502));
-	if (!mcp)
+	pmic = calloc(1, sizeof(struct mcp16502_pmic));
+	if (!pmic)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
-	mcp->i2c_dev = i2c_dev;
+	pmic->i2c_dev = i2c_dev;
 
 	/* The LPM gpio is described as optional in the bindings */
-	gpio_dt_get_by_index(fdt, node, 0, "lpm", &mcp->lpm_gpio);
-	if (mcp->lpm_gpio)
+	gpio_dt_get_by_index(fdt, node, 0, "lpm", &pmic->lpm_gpio);
+	if (pmic->lpm_gpio)
 	{
-		gpio_set_direction(mcp->lpm_gpio, GPIO_DIR_OUT);
-		gpio_set_value(mcp->lpm_gpio, GPIO_LEVEL_LOW);
+		gpio_set_direction(pmic->lpm_gpio, GPIO_DIR_OUT);
+		gpio_set_value(pmic->lpm_gpio, GPIO_LEVEL_LOW);
 	}
 
-	mcp16502_gpio_set_lpm_mode(mcp, false);
+	mcp16502_gpio_set_lpm_mode(pmic, false);
 
-	mcp16502_pm_init(mcp);
+	mcp16502_pm_init(pmic);
 
-	return mcp16502_register_regulators(fdt, node);
+	return mcp16502_register_regulators(fdt, node, pmic);
 }
 
 static const struct dt_device_match mcp16502_match_table[] = {
